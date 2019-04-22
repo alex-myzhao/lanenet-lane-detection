@@ -10,6 +10,8 @@
 """
 import numpy as np
 import glog as log
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from sklearn.cluster import MeanShift
 from sklearn.cluster import DBSCAN

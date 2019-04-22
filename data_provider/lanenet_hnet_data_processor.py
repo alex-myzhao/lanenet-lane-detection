@@ -136,6 +136,8 @@ if __name__ == '__main__':
         pty = pt[1]
         image[pty, ptx] = 255
 
+    import matplotlib
+    matplotlib.use("TkAgg")
     import matplotlib.pyplot as plt
     plt.imshow(image, cmap='gray')
     plt.show()

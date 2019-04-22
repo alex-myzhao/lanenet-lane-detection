@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # @Time    : 18-5-23 上午11:33
 # @Author  : Luo Yao
@@ -18,6 +17,8 @@ import tensorflow as tf
 import glob
 import glog as log
 import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import cv2
 
@@ -54,9 +55,8 @@ def minmax_scale(input_arr):
     """
     min_val = np.min(input_arr)
     max_val = np.max(input_arr)
-
+    print(min_val, max_val)
     output_arr = (input_arr - min_val) * 255.0 / (max_val - min_val)
-
     return output_arr
 
 
@@ -70,13 +70,14 @@ def test_lanenet(image_path, weights_path, use_gpu):
     """
     assert ops.exists(image_path), '{:s} not exist'.format(image_path)
 
-    log.info('开始读取图像数据并进行预处理')
+    log.info('Start reading and preprocessing the test image')
     t_start = time.time()
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     image_vis = image
-    image = cv2.resize(image, (512, 256), interpolation=cv2.INTER_LINEAR)
+    if image.shape != (256, 512, 3):
+        image = cv2.resize(image, (512, 256), interpolation=cv2.INTER_LINEAR)
     image = image - VGG_MEAN
-    log.info('图像读取完毕, 耗时: {:.5f}s'.format(time.time() - t_start))
+    log.info('Done, Time Cost: {:.5f}s'.format(time.time() - t_start))
 
     input_tensor = tf.placeholder(dtype=tf.float32, shape=[1, 256, 512, 3], name='input_tensor')
     phase_tensor = tf.constant('test', tf.string)
@@ -108,7 +109,7 @@ def test_lanenet(image_path, weights_path, use_gpu):
         binary_seg_image, instance_seg_image = sess.run([binary_seg_ret, instance_seg_ret],
                                                         feed_dict={input_tensor: [image]})
         t_cost = time.time() - t_start
-        log.info('单张图像车道线预测耗时: {:.5f}s'.format(t_cost))
+        log.info('Each prediction time cost: {:.5f}s'.format(t_cost))
 
         binary_seg_image[0] = postprocessor.postprocess(binary_seg_image[0])
         mask_image = cluster.get_lane_mask(binary_seg_ret=binary_seg_image[0],
