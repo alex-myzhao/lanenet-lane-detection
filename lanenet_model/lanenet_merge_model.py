@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # @Time    : 18-5-11 下午5:28
 # @Author  : Luo Yao
