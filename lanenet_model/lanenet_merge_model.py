@@ -39,7 +39,7 @@ class LaneNet(cnn_basenet.CNNBaseModel):
             return decode_ret
 
 
-    def compute_loss(self, input_tensor, binary_label, instance_label, name):
+    def compute_loss(self, input_tensor, binary_label, name):
         with tf.variable_scope(name):
             # build model
             inference_ret = self._build_model(input_tensor=input_tensor, name='inference')

@@ -105,13 +105,12 @@ def test_lanenet(image_path, weights_path, use_gpu):
 
     sess.close()
 
-    return
 
 
 def test_lanenet_batch(image_dir, weights_path, batch_size, use_gpu, save_dir=None):
     assert ops.exists(image_dir), '{:s} not exist'.format(image_dir)
 
-    log.info('开始获取图像文件路径...')
+    log.info('Strat loading images...')
     image_path_list = glob.glob('{:s}/**/*.jpg'.format(image_dir), recursive=True) + \
                       glob.glob('{:s}/**/*.png'.format(image_dir), recursive=True) + \
                       glob.glob('{:s}/**/*.jpeg'.format(image_dir), recursive=True)
@@ -120,32 +119,30 @@ def test_lanenet_batch(image_dir, weights_path, batch_size, use_gpu, save_dir=No
     phase_tensor = tf.constant('test', tf.string)
 
     net = lanenet_merge_model.LaneNet(phase=phase_tensor, net_flag='vgg')
-    binary_seg_ret, instance_seg_ret = net.inference(input_tensor=input_tensor, name='lanenet_model')
+    binary_seg_ret = net.inference(input_tensor=input_tensor, name='lanenet_model')
 
-    cluster = lanenet_cluster.LaneNetCluster()
     postprocessor = lanenet_postprocess.LaneNetPoseProcessor()
-
-    saver = tf.train.Saver()
 
     # Set sess configuration
     if use_gpu:
         sess_config = tf.ConfigProto(device_count={'GPU': 1})
+        # sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
+        # sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
+        # sess_config.gpu_options.allocator_type = 'BFC'
     else:
         sess_config = tf.ConfigProto(device_count={'GPU': 0})
-    sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
-    sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
-    sess_config.gpu_options.allocator_type = 'BFC'
 
     sess = tf.Session(config=sess_config)
 
     with sess.as_default():
-
-        saver.restore(sess=sess, save_path=weights_path)
+        variables = tf.global_variables()
+        restorer = tf.train.Saver(variables)
+        restorer.restore(sess=sess, save_path=weights_path)
 
         epoch_nums = int(math.ceil(len(image_path_list) / batch_size))
 
         for epoch in range(epoch_nums):
-            log.info('[Epoch:{:d}] 开始图像读取和预处理...'.format(epoch))
+            log.info('[Epoch:{:d}] begin...'.format(epoch))
             t_start = time.time()
             image_path_epoch = image_path_list[epoch * batch_size:(epoch + 1) * batch_size]
             image_list_epoch = [cv2.imread(tmp, cv2.IMREAD_COLOR) for tmp in image_path_epoch]
@@ -154,49 +151,22 @@ def test_lanenet_batch(image_dir, weights_path, batch_size, use_gpu, save_dir=No
                                 for tmp in image_list_epoch]
             image_list_epoch = [tmp - VGG_MEAN for tmp in image_list_epoch]
             t_cost = time.time() - t_start
-            log.info('[Epoch:{:d}] 预处理{:d}张图像, 共耗时: {:.5f}s, 平均每张耗时: {:.5f}'.format(
-                epoch, len(image_path_epoch), t_cost, t_cost / len(image_path_epoch)))
+            log.info('[Epoch:{:d}] Preprocessed {:d} images, total time cost: {:.5f}s, average time cost per image: {:.5f}'.format(epoch, len(image_path_epoch), t_cost, t_cost / len(image_path_epoch)))
 
             t_start = time.time()
-            binary_seg_images, instance_seg_images = sess.run(
-                [binary_seg_ret, instance_seg_ret], feed_dict={input_tensor: image_list_epoch})
-            t_cost = time.time() - t_start
-            log.info('[Epoch:{:d}] 预测{:d}张图像车道线, 共耗时: {:.5f}s, 平均每张耗时: {:.5f}s'.format(
-                epoch, len(image_path_epoch), t_cost, t_cost / len(image_path_epoch)))
+            binary_seg_images = sess.run(binary_seg_ret, feed_dict={input_tensor: image_list_epoch})
 
-            cluster_time = []
-            for index, binary_seg_image in enumerate(binary_seg_images):
-                t_start = time.time()
-                binary_seg_image = postprocessor.postprocess(binary_seg_image)
-                mask_image = cluster.get_lane_mask(binary_seg_ret=binary_seg_image,
-                                                   instance_seg_ret=instance_seg_images[index])
-                cluster_time.append(time.time() - t_start)
-                mask_image = cv2.resize(mask_image, (image_vis_list[index].shape[1],
-                                                     image_vis_list[index].shape[0]),
-                                        interpolation=cv2.INTER_LINEAR)
-
-                if save_dir is None:
-                    plt.ion()
-                    plt.figure('mask_image')
-                    plt.imshow(mask_image[:, :, (2, 1, 0)])
-                    plt.figure('src_image')
-                    plt.imshow(image_vis_list[index][:, :, (2, 1, 0)])
-                    plt.pause(3.0)
-                    plt.show()
-                    plt.ioff()
-
+            for index in range(len(binary_seg_images)):
+                binary_seg_images[index] = postprocessor.postprocess(binary_seg_images[index])
                 if save_dir is not None:
-                    mask_image = cv2.addWeighted(image_vis_list[index], 1.0, mask_image, 1.0, 0)
+                    # binary_image = cv2.addWeighted(image_vis_list[index], 1.0, binary_seg_images[index], 1.0, 0)
                     image_name = ops.split(image_path_epoch[index])[1]
                     image_save_path = ops.join(save_dir, image_name)
-                    cv2.imwrite(image_save_path, mask_image)
+                    cv2.imwrite(image_save_path, binary_seg_images[index] * 255)
 
-            log.info('[Epoch:{:d}] 进行{:d}张图像车道线聚类, 共耗时: {:.5f}s, 平均每张耗时: {:.5f}'.format(
-                epoch, len(image_path_epoch), np.sum(cluster_time), np.mean(cluster_time)))
-
+            t_cost = time.time() - t_start
+            log.info('[Epoch:{:d}] Predicted {:d} lane images, total time cost: {:.5f}s, average time cost per image: {:.5f}s'.format(epoch, len(image_path_epoch), t_cost, t_cost / len(image_path_epoch)))
     sess.close()
-
-    return
 
 
 if __name__ == '__main__':
