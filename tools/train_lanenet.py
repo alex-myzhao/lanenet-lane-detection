@@ -78,10 +78,6 @@ def train_net(dataset_dir, weights_path=None, net_flag='vgg'):
                                              shape=[CFG.TRAIN.BATCH_SIZE, CFG.TRAIN.IMG_HEIGHT,
                                                     CFG.TRAIN.IMG_WIDTH, 1],
                                              name='binary_input_label')
-        instance_label_tensor = tf.placeholder(dtype=tf.float32,
-                                               shape=[CFG.TRAIN.BATCH_SIZE, CFG.TRAIN.IMG_HEIGHT,
-                                                      CFG.TRAIN.IMG_WIDTH],
-                                               name='instance_input_label')
         phase = tf.placeholder(dtype=tf.string, shape=None, name='net_phase')
 
         net = lanenet_merge_model.LaneNet(net_flag=net_flag, phase=phase)
@@ -189,7 +185,7 @@ def train_net(dataset_dir, weights_path=None, net_flag='vgg'):
             # training part
             t_start = time.time()
             with tf.device('/cpu:0'):
-                gt_imgs, binary_gt_labels, instance_gt_labels = train_dataset.next_batch(CFG.TRAIN.BATCH_SIZE)
+                gt_imgs, binary_gt_labels = train_dataset.next_batch(CFG.TRAIN.BATCH_SIZE)
                 gt_imgs = [cv2.resize(tmp,
                                       dsize=(CFG.TRAIN.IMG_WIDTH, CFG.TRAIN.IMG_HEIGHT),
                                       dst=tmp,
@@ -233,8 +229,7 @@ def train_net(dataset_dir, weights_path=None, net_flag='vgg'):
 
             # ------------------ Validation part ------------------
             with tf.device('/cpu:0'):
-                gt_imgs_val, binary_gt_labels_val, instance_gt_labels_val \
-                    = val_dataset.next_batch(CFG.TRAIN.VAL_BATCH_SIZE)
+                gt_imgs_val, binary_gt_labels_val = val_dataset.next_batch(CFG.TRAIN.VAL_BATCH_SIZE)
                 gt_imgs_val = [cv2.resize(tmp,
                                           dsize=(CFG.TRAIN.IMG_WIDTH, CFG.TRAIN.IMG_HEIGHT),
                                           dst=tmp,
