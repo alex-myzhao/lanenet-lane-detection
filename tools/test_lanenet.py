@@ -55,11 +55,10 @@ def minmax_scale(input_arr):
 
 def test_lanenet(image_path, weights_path, use_gpu):
     assert ops.exists(image_path), '{:s} not exist'.format(image_path)
-
     log.info('Start reading and preprocessing the test image')
     t_start = time.time()
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    image_vis = image
+    image_ori = image
     if image.shape != (256, 512, 3):
         image = cv2.resize(image, (512, 256), interpolation=cv2.INTER_LINEAR)
     image = image - VGG_MEAN
@@ -69,49 +68,40 @@ def test_lanenet(image_path, weights_path, use_gpu):
     phase_tensor = tf.constant('test', tf.string)
 
     net = lanenet_merge_model.LaneNet(phase=phase_tensor, net_flag='vgg')
-    binary_seg_ret, instance_seg_ret = net.inference(input_tensor=input_tensor, name='lanenet_model')
-
-    cluster = lanenet_cluster.LaneNetCluster()
     postprocessor = lanenet_postprocess.LaneNetPoseProcessor()
 
-    saver = tf.train.Saver()
+    # Build the model
+    binary_seg_ret = net.inference(input_tensor=input_tensor, name='lanenet_model')
 
     # Set sess configuration
     if use_gpu:
         sess_config = tf.ConfigProto(device_count={'GPU': 1})
+        # sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
+        # sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
+        # sess_config.gpu_options.allocator_type = 'BFC'
     else:
         sess_config = tf.ConfigProto(device_count={'CPU': 0})
-    # sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
-    # sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
-    # sess_config.gpu_options.allocator_type = 'BFC'
 
     sess = tf.Session(config=sess_config)
 
-    with sess.as_default():
-        saver.restore(sess=sess, save_path=weights_path)
+    # restore part of the model
+    variables = tf.global_variables()
+    restorer = tf.train.Saver(variables)
+    restorer.restore(sess=sess, save_path=weights_path)
 
-        t_start = time.time()
-        binary_seg_image, instance_seg_image = sess.run([binary_seg_ret, instance_seg_ret],
-                                                        feed_dict={input_tensor: [image]})
-        t_cost = time.time() - t_start
-        log.info('Each prediction time cost: {:.5f}s'.format(t_cost))
+    # with sess.as_default():
 
-        binary_seg_image[0] = postprocessor.postprocess(binary_seg_image[0])
-        mask_image = cluster.get_lane_mask(binary_seg_ret=binary_seg_image[0],
-                                           instance_seg_ret=instance_seg_image[0])
-        for i in range(4):
-            instance_seg_image[0][:, :, i] = minmax_scale(instance_seg_image[0][:, :, i])
-        embedding_image = np.array(instance_seg_image[0], np.uint8)
+    t_start = time.time()
+    binary_seg_image = sess.run(binary_seg_ret, feed_dict={input_tensor: [image]})
+    binary_seg_image[0] = postprocessor.postprocess(binary_seg_image[0])
 
-        plt.figure('mask_image')
-        plt.imshow(mask_image[:, :, (2, 1, 0)])
-        plt.figure('src_image')
-        plt.imshow(image_vis[:, :, (2, 1, 0)])
-        plt.figure('instance_image')
-        plt.imshow(embedding_image[:, :, (2, 1, 0)])
-        plt.figure('binary_image')
-        plt.imshow(binary_seg_image[0] * 255, cmap='gray')
-        plt.show()
+    log.info('Each prediction time cost: {:.5f}s'.format(time.time() - t_start))
+
+    plt.figure('src_image')
+    plt.imshow(image_ori[:, :, (2, 1, 0)])
+    plt.figure('binary_image')
+    plt.imshow(binary_seg_image[0] * 255, cmap='gray')
+    plt.show()
 
     sess.close()
 
@@ -210,7 +200,6 @@ def test_lanenet_batch(image_dir, weights_path, batch_size, use_gpu, save_dir=No
 
 
 if __name__ == '__main__':
-    # init args
     args = init_args()
 
     if args.save_dir is not None and not ops.exists(args.save_dir):
@@ -218,9 +207,7 @@ if __name__ == '__main__':
         os.makedirs(args.save_dir)
 
     if args.is_batch.lower() == 'false':
-        # test hnet model on single image
         test_lanenet(args.image_path, args.weights_path, args.use_gpu)
     else:
-        # test hnet model on a batch of image
         test_lanenet_batch(image_dir=args.image_path, weights_path=args.weights_path,
                            save_dir=args.save_dir, use_gpu=args.use_gpu, batch_size=args.batch_size)
