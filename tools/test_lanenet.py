@@ -32,10 +32,6 @@ VGG_MEAN = [103.939, 116.779, 123.68]
 
 
 def init_args():
-    """
-
-    :return:
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path', type=str, help='The image path or the src image save dir')
     parser.add_argument('--weights_path', type=str, help='The model weights path')
@@ -43,31 +39,21 @@ def init_args():
     parser.add_argument('--batch_size', type=int, help='The batch size of the test images', default=32)
     parser.add_argument('--save_dir', type=str, help='Test result image save dir', default=None)
     parser.add_argument('--use_gpu', type=int, help='If use gpu set 1 or 0 instead', default=1)
-
     return parser.parse_args()
 
 
 def minmax_scale(input_arr):
-    """
-
-    :param input_arr:
-    :return:
-    """
     min_val = np.min(input_arr)
     max_val = np.max(input_arr)
-    print(min_val, max_val)
-    output_arr = (input_arr - min_val) * 255.0 / (max_val - min_val)
-    return output_arr
+    if max_val - min_val == 0:
+        log.info('divided by 0')
+        return input_arr
+    else:
+        output_arr = (input_arr - min_val) * 255.0 / (max_val - min_val)
+        return output_arr
 
 
 def test_lanenet(image_path, weights_path, use_gpu):
-    """
-
-    :param image_path:
-    :param weights_path:
-    :param use_gpu:
-    :return:
-    """
     assert ops.exists(image_path), '{:s} not exist'.format(image_path)
 
     log.info('Start reading and preprocessing the test image')
@@ -95,14 +81,13 @@ def test_lanenet(image_path, weights_path, use_gpu):
         sess_config = tf.ConfigProto(device_count={'GPU': 1})
     else:
         sess_config = tf.ConfigProto(device_count={'CPU': 0})
-    sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
-    sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
-    sess_config.gpu_options.allocator_type = 'BFC'
+    # sess_config.gpu_options.per_process_gpu_memory_fraction = CFG.TEST.GPU_MEMORY_FRACTION
+    # sess_config.gpu_options.allow_growth = CFG.TRAIN.TF_ALLOW_GROWTH
+    # sess_config.gpu_options.allocator_type = 'BFC'
 
     sess = tf.Session(config=sess_config)
 
     with sess.as_default():
-
         saver.restore(sess=sess, save_path=weights_path)
 
         t_start = time.time()
@@ -114,7 +99,6 @@ def test_lanenet(image_path, weights_path, use_gpu):
         binary_seg_image[0] = postprocessor.postprocess(binary_seg_image[0])
         mask_image = cluster.get_lane_mask(binary_seg_ret=binary_seg_image[0],
                                            instance_seg_ret=instance_seg_image[0])
-
         for i in range(4):
             instance_seg_image[0][:, :, i] = minmax_scale(instance_seg_image[0][:, :, i])
         embedding_image = np.array(instance_seg_image[0], np.uint8)
@@ -135,15 +119,6 @@ def test_lanenet(image_path, weights_path, use_gpu):
 
 
 def test_lanenet_batch(image_dir, weights_path, batch_size, use_gpu, save_dir=None):
-    """
-
-    :param image_dir:
-    :param weights_path:
-    :param batch_size:
-    :param use_gpu:
-    :param save_dir:
-    :return:
-    """
     assert ops.exists(image_dir), '{:s} not exist'.format(image_dir)
 
     log.info('开始获取图像文件路径...')
